@@ -273,7 +273,7 @@ use_security = st.sidebar.button("🚨 Security & Ops Incidents")
 # --- INITIALIZE GEMINI CLIENT ---
 if api_key:
     genai.configure(api_key=api_key)
-    model = genai.GenerativeModel("gemini-2.5-flash")
+    model = genai.GenerativeModel("gemini-2.0-flash")
 else:
     model = None
 
