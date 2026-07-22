@@ -579,9 +579,7 @@ else:
                     st.session_state.chat_input = default_queries[1]
             with btn_col3:
                 if st.button(default_queries[2], key="q3", use_container_width=True):
-                    st.session_state.chat_input = default_queries[2]
-            
-            # Chat input text box
+                    st.            # Chat input text box
             user_query = st.chat_input("Ask StadiumVibe to visualize or analyze...")
             
             # Use query from click or manual input
@@ -591,78 +589,95 @@ else:
                 st.session_state.chat_input = None # reset
                 
             if active_query:
-                st.info(f"Analyzing: **{active_query}**")
+                # Check if this query is already in state to avoid redundant calls during simulation
+                is_new_query = ('last_query' not in st.session_state or st.session_state.last_query != active_query)
                 
-                with st.spinner("Operations Agent is calculating & plotting..."):
-                    prompt = f"""
-                    You are StadiumVibe, a Tournament Operations AI Analyst. You are given a pandas DataFrame named `df` containing Smart Stadium data:
-                    Schema: {df.dtypes.to_dict()}
-                    First 3 rows: {df.head(3).to_dict()}
-                    
-                    The Operations Director wants to execute this analysis: "{active_query}"
-                    
-                    Your instructions:
-                    1. Write Python code using pandas and plotly.express (or plotly.graph_objects) to build the requested visualization.
-                       - Define a variable named `fig` which holds the Plotly Figure object.
-                       - DO NOT use st.write, st.plotly_chart, fig.show() or plt.show() inside the code block. Just create the `fig` object.
-                       - Use a modern dark theme and vibrant colors (e.g. blue, purple, magenta, emerald) for the chart.
-                    2. Write a concise, bulleted operational summary explaining what this chart reveals to the command team.
-                    
-                    Your output must match this exact format. Do not add any text before or after the code block:
-                    
-                    ```python
-                    # Write only python code here.
-                    # It must define a figure object named `fig`
-                    ```
-                    ---EXPLANATION---
-                    Write a concise operational explanation of what this chart reveals and recommendations for stadium management.
-                    """
-                    
-                    try:
-                        response = model.generate_content(prompt)
-                        result = response.text
+                if is_new_query:
+                    st.info(f"Analyzing: **{active_query}**")
+                    with st.spinner("Operations Agent is calculating & plotting..."):
+                        prompt = f"""
+                        You are StadiumVibe, a Tournament Operations AI Analyst. You are given a pandas DataFrame named `df` containing Smart Stadium data:
+                        Schema: {df.dtypes.to_dict()}
+                        First 3 rows: {df.head(3).to_dict()}
                         
-                        # Parse the code and the explanation
-                        code_pattern = r"```python(.*?)```"
-                        code_match = re.search(code_pattern, result, re.DOTALL)
+                        The Operations Director wants to execute this analysis: "{active_query}"
                         
-                        explanation = ""
-                        if "---EXPLANATION---" in result:
-                            explanation = result.split("---EXPLANATION---")[1].strip()
-                        else:
-                            explanation = re.sub(code_pattern, "", result, flags=re.DOTALL).strip()
+                        Your instructions:
+                        1. Write Python code using pandas and plotly.express (or plotly.graph_objects) to build the requested visualization.
+                           - Define a variable named `fig` which holds the Plotly Figure object.
+                           - DO NOT use st.write, st.plotly_chart, fig.show() or plt.show() inside the code block. Just create the `fig` object.
+                           - Use a modern dark theme and vibrant colors (e.g. blue, purple, magenta, emerald) for the chart.
+                        2. Write a concise, bulleted operational summary explaining what this chart reveals to the command team.
+                        
+                        Your output must match this exact format. Do not add any text before or after the code block:
+                        
+                        ```python
+                        # Write only python code here.
+                        # It must define a figure object named `fig`
+                        ```
+                        ---EXPLANATION---
+                        Write a concise operational explanation of what this chart reveals and recommendations for stadium management.
+                        """
+                        
+                        try:
+                            response = model.generate_content(prompt)
+                            result = response.text
                             
-                        if code_match:
-                            extracted_code = code_match.group(1).strip()
+                            # Parse code and explanation
+                            code_pattern = r"```python(.*?)```"
+                            code_match = re.search(code_pattern, result, re.DOTALL)
                             
-                            local_vars = {
-                                'df': df,
-                                'pd': pd,
-                                'np': np,
-                                'px': px,
-                                'go': go
-                            }
-                            
-                            try:
-                                # Execute the python code generated by the LLM
-                                exec(extracted_code, globals(), local_vars)
+                            explanation = ""
+                            if "---EXPLANATION---" in result:
+                                explanation = result.split("---EXPLANATION---")[1].strip()
+                            else:
+                                explanation = re.sub(code_pattern, "", result, flags=re.DOTALL).strip()
                                 
-                                if 'fig' in local_vars:
-                                    st.plotly_chart(local_vars['fig'], use_container_width=True)
-                                else:
-                                    st.error("The code ran successfully but did not define a variable named `fig`.")
-                                    
-                                with st.expander("🛠️ View generated Python/Plotly code"):
-                                    st.code(extracted_code, language='python')
-                                    
-                                if explanation:
-                                    st.markdown("<h5 style='font-family: Outfit; color: #F8FAFC;'>Operational Decision Support:</h5>", unsafe_allow_html=True)
-                                    st.markdown(explanation)
-                                    
-                            except Exception as exec_err:
+                            extracted_code = ""
+                            if code_match:
+                                extracted_code = code_match.group(1).strip()
+                                
+                            # Cache the result in session state
+                            st.session_state.last_query = active_query
+                            st.session_state.last_code = extracted_code
+                            st.session_state.last_explanation = explanation
+                            st.session_state.has_chart_err = False
+                            
+                        except Exception as gen_err:
+                            st.error(f"Error calling Gemini API: {gen_err}")
+                
+                # Render from Session State cache
+                if 'last_query' in st.session_state and st.session_state.last_query == active_query:
+                    st.info(f"Viewing: **{active_query}**")
+                    extracted_code = st.session_state.last_code
+                    explanation = st.session_state.last_explanation
+                    
+                    if extracted_code:
+                        local_vars = {
+                            'df': df,
+                            'pd': pd,
+                            'np': np,
+                            'px': px,
+                            'go': go
+                        }
+                        
+                        try:
+                            exec(extracted_code, globals(), local_vars)
+                            if 'fig' in local_vars:
+                                st.plotly_chart(local_vars['fig'], use_container_width=True)
+                            else:
+                                st.error("The code ran successfully but did not define a variable named `fig`.")
+                            
+                            with st.expander("🛠️ View generated Python/Plotly code"):
+                                st.code(extracted_code, language='python')
+                                
+                            if explanation:
+                                st.markdown("<h5 style='font-family: Outfit; color: #F8FAFC;'>Operational Decision Support:</h5>", unsafe_allow_html=True)
+                                st.markdown(explanation)
+                                
+                        except Exception as exec_err:
+                            if not st.session_state.has_chart_err:
                                 st.warning("⚠️ Initial code failed. Activating AI Self-Healing mechanism...")
-                                
-                                # AI Self-Healing Attempt
                                 healing_prompt = f"""
                                 The code you generated previously failed with the following traceback:
                                 {traceback.format_exc()}
@@ -679,29 +694,20 @@ else:
                                 """
                                 try:
                                     healed_response = model.generate_content(healing_prompt)
+                                    code_pattern = r"```python(.*?)```"
                                     healed_code_match = re.search(code_pattern, healed_response.text, re.DOTALL)
                                     if healed_code_match:
                                         healed_code = healed_code_match.group(1).strip()
-                                        
-                                        # Retry execution
-                                        exec(healed_code, globals(), local_vars)
-                                        if 'fig' in local_vars:
-                                            st.plotly_chart(local_vars['fig'], use_container_width=True)
-                                            st.success("✓ Code self-healed successfully!")
-                                            with st.expander("🛠️ View healed Python code"):
-                                                st.code(healed_code, language='python')
-                                        else:
-                                            st.error("Self-healing failed: Code ran but 'fig' variable not found.")
-                                    else:
-                                        st.error("Self-healing failed: Corrected code block could not be parsed.")
-                                except Exception as heal_fail:
-                                    st.error(f"AI Self-Healing crashed: {heal_fail}")
-                        else:
-                            st.error("Gemini failed to output a code block. Please try again.")
-                            st.write(result)
-                            
-                    except Exception as gen_err:
-                        st.error(f"Error calling Gemini API: {gen_err}")
+                                        st.session_state.last_code = healed_code
+                                        st.session_state.has_chart_err = True
+                                        st.rerun()
+                                except Exception as h_err:
+                                    st.error(f"Self-healing crashed: {h_err}")
+                            else:
+                                st.error("Self-healing failed to correct the chart code.")
+                                with st.expander("Show detailed code & trace"):
+                                    st.code(extracted_code, language='python')
+                                    st.code(traceback.format_exc(), language='python')
 
     # TAB 4: INCIDENT ALERT ROOM
     with tab_alerts:
@@ -748,8 +754,10 @@ else:
             # Use Gemini to give a mitigation advice
             if model:
                 st.markdown("<br><h5 style='font-family: Outfit; color: #F8FAFC;'>AI Commander Recommendation:</h5>", unsafe_allow_html=True)
-                @st.cache_data(show_spinner=False)
-                def get_ops_mitigation(alerts_summary):
+                
+                alerts_summary = "\n".join([a['Message'] for a in active_warnings])
+                # Cache mitigation to prevent hit on every simulation reload
+                if 'last_alerts_summary' not in st.session_state or st.session_state.last_alerts_summary != alerts_summary:
                     prompt = f"""
                     You are the Incident Commander for a FIFA Stadium. We have the following active alarms logged in our operations center:
                     {alerts_summary}
@@ -757,13 +765,13 @@ else:
                     Please write a 2-3 sentence mitigation strategy outlining resource redeployment (e.g. staff movement, police dispatch, gate redirection) to resolve these issues. Keep it extremely brief and actionable.
                     """
                     try:
-                        return model.generate_content(prompt).text
+                        mitigation_text = model.generate_content(prompt).text
+                        st.session_state.last_alerts_summary = alerts_summary
+                        st.session_state.last_mitigation = mitigation_text
                     except Exception as e:
-                        return f"Failed to get AI recommendation: {e}"
-                
-                alerts_summary = "\n".join([a['Message'] for a in active_warnings])
-                mitigation_text = get_ops_mitigation(alerts_summary)
-                st.info(mitigation_text)
+                        st.session_state.last_mitigation = f"Failed to get AI recommendation: {e}"
+                        
+                st.info(st.session_state.last_mitigation)
 
     # TAB 5: CCTV VISUAL ANALYST
     with tab_cctv:
@@ -783,21 +791,30 @@ else:
                 if not model:
                     st.warning("Please configure your Gemini API Key in the sidebar.")
                 else:
-                    with st.spinner("AI Vision is inspecting the image..."):
-                        vision_prompt = """
-                        You are a Smart Stadium Vision AI Security agent. You are looking at a CCTV feed screenshot.
-                        Analyze this image and output an Incident Ticket containing:
-                        1. **Incident Title:** (Brief description of what is seen in the image)
-                        2. **Estimated Risk Level:** (Low, Medium, High, Critical with reason)
-                        3. **Crowd Estimate:** (Approximate count or density description: sparse, moderate, heavy, gridlocked)
-                        4. **Suggested Immediate Action:** (What should the security team or onsite stewards do right now to handle this situation?)
-                        
-                        Keep the ticket concise, formal, and structured.
-                        """
-                        try:
-                            # Send image and prompt to Gemini
-                            response = model.generate_content([vision_prompt, image])
-                            st.markdown(response.text)
+                    file_id = f"{cctv_file.name}_{cctv_file.size}"
+                    
+                    # Only trigger visual API call if it is a new image
+                    if 'last_cctv_id' not in st.session_state or st.session_state.last_cctv_id != file_id:
+                        with st.spinner("AI Vision is inspecting the image..."):
+                            vision_prompt = """
+                            You are a Smart Stadium Vision AI Security agent. You are looking at a CCTV feed screenshot.
+                            Analyze this image and output an Incident Ticket containing:
+                            1. **Incident Title:** (Brief description of what is seen in the image)
+                            2. **Estimated Risk Level:** (Low, Medium, High, Critical with reason)
+                            3. **Crowd Estimate:** (Approximate count or density description: sparse, moderate, heavy, gridlocked)
+                            4. **Suggested Immediate Action:** (What should the security team or onsite stewards do right now to handle this situation?)
+                            
+                            Keep the ticket concise, formal, and structured.
+                            """
+                            try:
+                                response = model.generate_content([vision_prompt, image])
+                                st.session_state.last_cctv_id = file_id
+                                st.session_state.last_cctv_report = response.text
+                            except Exception as vision_err:
+                                st.error(f"Vision API error: {vision_err}")
+                                st.session_state.last_cctv_report = ""
+                                
+                    if 'last_cctv_id' in st.session_state and st.session_state.last_cctv_id == file_id:
+                        if st.session_state.last_cctv_report:
+                            st.markdown(st.session_state.last_cctv_report)
                             st.success("✓ CCTV Incident Report Logged in Database.")
-                        except Exception as vision_err:
-                            st.error(f"Vision API error: {vision_err}")
