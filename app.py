@@ -579,7 +579,9 @@ else:
                     st.session_state.chat_input = default_queries[1]
             with btn_col3:
                 if st.button(default_queries[2], key="q3", use_container_width=True):
-                    st.            # Chat input text box
+                    st.session_state.chat_input = default_queries[2]
+            
+            # Chat input text box
             user_query = st.chat_input("Ask StadiumVibe to visualize or analyze...")
             
             # Use query from click or manual input
