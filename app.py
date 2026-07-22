@@ -319,7 +319,7 @@ if df is None:
     st.markdown(
         """
         <div class="title-container">
-            <div class="challenge-tag">Challenge 4 Showcase: Smart Stadiums & Tournament Operations</div>
+            <div class="challenge-tag">Smart Stadium Operations Control Room</div>
             <div class="gradient-title">StadiumVibe Elite</div>
             <div class="subtitle">Generative AI-Powered Stadium Operations & CCTV Visual Analyst</div>
         </div>
